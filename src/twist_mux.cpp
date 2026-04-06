@@ -77,22 +77,39 @@ TwistMux::TwistMux()
 
 void TwistMux::init()
 {
+  auto nh = std::shared_ptr<rclcpp::Node>(this, [](rclcpp::Node *) {});
+  bool use_stamped = true;
+  fetch_param(nh, "use_stamped", use_stamped);
+
   /// Get topics and locks:
   velocity_hs_ = std::make_shared<velocity_topic_container>();
+  velocity_stamped_hs_ = std::make_shared<velocity_stamped_topic_container>();
   lock_hs_ = std::make_shared<lock_topic_container>();
-  getTopicHandles("topics", *velocity_hs_);
+  if (use_stamped) {
+    getTopicHandles("topics", *velocity_stamped_hs_);
+  } else {
+    getTopicHandles("topics", *velocity_hs_);
+  }
   getTopicHandles("locks", *lock_hs_);
 
   /// Publisher for output topic:
-  cmd_pub_ =
-    this->create_publisher<geometry_msgs::msg::Twist>(
-    "cmd_vel_out",
-    rclcpp::QoS(rclcpp::KeepLast(1)));
+  if (use_stamped) {
+    cmd_pub_stamped_ =
+      this->create_publisher<geometry_msgs::msg::TwistStamped>(
+      "cmd_vel_out",
+      rclcpp::QoS(rclcpp::KeepLast(1)));
+  } else {
+    cmd_pub_ =
+      this->create_publisher<geometry_msgs::msg::Twist>(
+      "cmd_vel_out",
+      rclcpp::QoS(rclcpp::KeepLast(1)));
+  }
 
   /// Diagnostics:
   diagnostics_ = std::make_shared<diagnostics_type>(this);
   status_ = std::make_shared<status_type>();
   status_->velocity_hs = velocity_hs_;
+  status_->velocity_stamped_hs = velocity_stamped_hs_;
   status_->lock_hs = lock_hs_;
 
   diagnostics_timer_ = this->create_wall_timer(
@@ -110,6 +127,11 @@ void TwistMux::updateDiagnostics()
 void TwistMux::publishTwist(const geometry_msgs::msg::Twist::ConstSharedPtr & msg)
 {
   cmd_pub_->publish(*msg);
+}
+
+void TwistMux::publishTwistStamped(const geometry_msgs::msg::TwistStamped::ConstSharedPtr & msg)
+{
+  cmd_pub_stamped_->publish(*msg);
 }
 
 template<typename T>
@@ -175,6 +197,26 @@ bool TwistMux::hasPriority(const VelocityTopicHandle & twist)
   /// max_element on the priority of velocity topic handles satisfying
   /// that is NOT masked by the lock priority:
   for (const auto & velocity_h : *velocity_hs_) {
+    if (!velocity_h.isMasked(lock_priority)) {
+      const auto velocity_priority = velocity_h.getPriority();
+      if (priority < velocity_priority) {
+        priority = velocity_priority;
+        velocity_name = velocity_h.getName();
+      }
+    }
+  }
+
+  return twist.getName() == velocity_name;
+}
+
+bool TwistMux::hasPriorityStamped(const VelocityStampedTopicHandle & twist)
+{
+  const auto lock_priority = getLockPriority();
+
+  LockTopicHandle::priority_type priority = 0;
+  std::string velocity_name = "NULL";
+
+  for (const auto & velocity_h : *velocity_stamped_hs_) {
     if (!velocity_h.isMasked(lock_priority)) {
       const auto velocity_priority = velocity_h.getPriority();
       if (priority < velocity_priority) {
