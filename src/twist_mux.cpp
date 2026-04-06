@@ -77,7 +77,9 @@ TwistMux::TwistMux()
 
 void TwistMux::init()
 {
-  const bool use_stamped = this->declare_parameter("use_stamped", true);
+  auto nh = std::shared_ptr<rclcpp::Node>(this, [](rclcpp::Node *) {});
+  bool use_stamped = true;
+  fetch_param(nh, "use_stamped", use_stamped);
 
   /// Get topics and locks:
   velocity_hs_ = std::make_shared<velocity_topic_container>();
