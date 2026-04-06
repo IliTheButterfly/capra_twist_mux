@@ -39,6 +39,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <geometry_msgs/msg/twist.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
 
 #include <twist_mux/utils.hpp>
 #include <twist_mux/twist_mux.hpp>
@@ -195,6 +196,40 @@ public:
     // all the topic list; so far there's no O(1) solution.
     if (mux_->hasPriority(*this)) {
       mux_->publishTwist(msg);
+    }
+  }
+};
+
+class VelocityStampedTopicHandle : public TopicHandle_<geometry_msgs::msg::TwistStamped>
+{
+private:
+  typedef TopicHandle_<geometry_msgs::msg::TwistStamped> base_type;
+
+public:
+  typedef typename base_type::priority_type priority_type;
+
+  VelocityStampedTopicHandle(
+    const std::string & name, const std::string & topic, const rclcpp::Duration & timeout,
+    priority_type priority, TwistMux * mux)
+  : base_type(name, topic, timeout, priority, mux)
+  {
+    subscriber_ = mux_->create_subscription<geometry_msgs::msg::TwistStamped>(
+      topic_, rclcpp::SystemDefaultsQoS(),
+      std::bind(&VelocityStampedTopicHandle::callback, this, std::placeholders::_1));
+  }
+
+  bool isMasked(priority_type lock_priority) const
+  {
+    return hasExpired() || (getPriority() < lock_priority);
+  }
+
+  void callback(const geometry_msgs::msg::TwistStamped::ConstSharedPtr msg)
+  {
+    stamp_ = mux_->now();
+    msg_ = *msg;
+
+    if (mux_->hasPriorityStamped(*this)) {
+      mux_->publishTwistStamped(msg);
     }
   }
 };

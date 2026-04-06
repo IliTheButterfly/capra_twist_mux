@@ -58,6 +58,7 @@ void TwistMuxDiagnostics::update()
 void TwistMuxDiagnostics::updateStatus(const status_type::ConstPtr & status)
 {
   status_->velocity_hs = status->velocity_hs;
+  status_->velocity_stamped_hs = status->velocity_stamped_hs;
   status_->lock_hs = status->lock_hs;
   status_->priority = status->priority;
 
@@ -79,6 +80,14 @@ void TwistMuxDiagnostics::diagnostics(diagnostic_updater::DiagnosticStatusWrappe
   }
 
   for (auto & velocity_h : *status_->velocity_hs) {
+    stat.addf(
+      "velocity " + velocity_h.getName(), " %s (listening to %s @ %fs with priority #%d)",
+      (velocity_h.isMasked(status_->priority) ? "masked" : "unmasked"),
+      velocity_h.getTopic().c_str(),
+      velocity_h.getTimeout().seconds(), static_cast<int>(velocity_h.getPriority()));
+  }
+
+  for (auto & velocity_h : *status_->velocity_stamped_hs) {
     stat.addf(
       "velocity " + velocity_h.getName(), " %s (listening to %s @ %fs with priority #%d)",
       (velocity_h.isMasked(status_->priority) ? "masked" : "unmasked"),
